@@ -11,10 +11,10 @@ import java.util.*;
  * Показывает различные сценарии использования и анализ производительности
  */
 public class ThreadPoolDemo {
-    private static final Logger logger = Logger.getLogger(ThreadPoolDemo.class.getName());
+    // private static final Logger logger = Logger.getLogger(ThreadPoolDemo.class.getName());
     
     static {
-        setupLogging();
+        // setupLogging();
     }
     
     private static void setupLogging() {
@@ -37,21 +37,21 @@ public class ThreadPoolDemo {
     public static void main(String[] args) throws InterruptedException {
         System.out.println("=== ДЕМОНСТРАЦИЯ CustomThreadPool ===\n");
         
-        // Тест 1: Базовая функциональность
-        System.out.println("1. ТЕСТ БАЗОВОЙ ФУНКЦИОНАЛЬНОСТИ");
-        testBasicFunctionality();
+        // // Тест 1: Базовая функциональность
+        // System.out.println("1. ТЕСТ БАЗОВОЙ ФУНКЦИОНАЛЬНОСТИ");
+        // testBasicFunctionality();
         
-        // Тест 2: Обработка перегрузки
-        System.out.println("\n2. ТЕСТ ОБРАБОТКИ ПЕРЕГРУЗКИ");
-        testOverloadHandling();
+        // // Тест 2: Обработка перегрузки
+        // System.out.println("\n2. ТЕСТ ОБРАБОТКИ ПЕРЕГРУЗКИ");
+        // testOverloadHandling();
         
-        // Тест 3: Graceful shutdown
-        System.out.println("\n3. ТЕСТ GRACEFUL SHUTDOWN");
-        testGracefulShutdown();
+        // // Тест 3: Graceful shutdown
+        // System.out.println("\n3. ТЕСТ GRACEFUL SHUTDOWN");
+        // testGracefulShutdown();
         
-        // Тест 4: Сравнение производительности
-        System.out.println("\n4. СРАВНЕНИЕ ПРОИЗВОДИТЕЛЬНОСТИ");
-        performanceComparison();
+        // // Тест 4: Сравнение производительности
+        // System.out.println("\n4. СРАВНЕНИЕ ПРОИЗВОДИТЕЛЬНОСТИ");
+        // performanceComparison();
         
         // Тест 5: Анализ параметров
         System.out.println("\n5. АНАЛИЗ ВЛИЯНИЯ ПАРАМЕТРОВ");

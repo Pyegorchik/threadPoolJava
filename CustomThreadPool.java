@@ -11,7 +11,7 @@ import java.util.*;
  * Улучшенная версия с исправлениями архитектурных проблем
  */
 public class CustomThreadPool implements CustomExecutor {
-    private static final Logger logger = Logger.getLogger(CustomThreadPool.class.getName());
+    // private static final Logger logger = Logger.getLogger(CustomThreadPool.class.getName());
     
     // Основные параметры пула
     private final int corePoolSize;
@@ -66,8 +66,8 @@ public class CustomThreadPool implements CustomExecutor {
         // Создание базовых потоков
         createCoreWorkers();
         
-        logger.info(String.format("[Pool] CustomThreadPool initialized with core=%d, max=%d, keepAlive=%d %s, queuePerCore=%d",
-                corePoolSize, maxPoolSize, keepAliveTime, timeUnit, this.queueSize));
+        // logger.info(String.format("[Pool] CustomThreadPool initialized with core=%d, max=%d, keepAlive=%d %s, queuePerCore=%d",
+        //         corePoolSize, maxPoolSize, keepAliveTime, timeUnit, this.queueSize));
     }
     
     private void validateParameters(int corePoolSize, int maxPoolSize, long keepAliveTime, 
@@ -90,7 +90,7 @@ public class CustomThreadPool implements CustomExecutor {
                 workers.add(worker);
                 worker.thread.start();
                 totalThreadCount.incrementAndGet();
-                logger.info("[Pool] Created core worker for queue #" + i);
+                // logger.info("[Pool] Created core worker for queue #" + i);
             }
         } finally {
             mainLock.unlock();
@@ -109,45 +109,56 @@ public class CustomThreadPool implements CustomExecutor {
         long taskId = taskCounter.incrementAndGet();
         TaskWrapper task = new TaskWrapper(command, taskId);
         
-        // Стратегия размещения задач:
-        // 1. Попытка поместить в наименее загруженную очередь
-        // 2. Если не удалось - создать дополнительный поток (если возможно)
-        // 3. Иначе - отклонить
-        
-        int bestQueueIndex = findBestQueue();
-        if (taskQueues.get(bestQueueIndex).offer(task)) {
-            logger.info("[Pool] Task accepted into queue #" + bestQueueIndex + ": Task-" + taskId);
+        // ИСПРАВЛЕНИЕ: Делаем только ОДНУ попытку размещения с fallback стратегиями
+        if (tryPlaceTask(task)) {
             checkAndCreateSpareThreads();
             return;
         }
         
-        // Все очереди заполнены - пытаемся создать дополнительный поток
-        if (createExtraWorkerIfNeeded()) {
-            // Повторная попытка после создания нового потока
-            bestQueueIndex = findBestQueue();
-            if (taskQueues.get(bestQueueIndex).offer(task)) {
-                logger.info("[Pool] Task accepted after creating extra worker: Task-" + taskId);
-                return;
-            }
+        // Если не удалось разместить - создаем дополнительный поток и пытаемся ЕЩЕ РАЗ
+        if (createExtraWorkerIfNeeded() && tryPlaceTask(task)) {
+            return;
         }
         
         // Отклоняем задачу
         rejectionHandler.rejectedExecution(command, null);
-        logger.warning("[Rejected] Task Task-" + taskId + " was rejected due to overload!");
+    }
+
+    // НОВЫЙ МЕТОД: Объединяет Least Loaded + Round Robin в одной попытке
+    private boolean tryPlaceTask(TaskWrapper task) {
+        // Стратегия 1: Least Loaded (ваш оригинальный алгоритм)
+        int bestQueueIndex = findBestQueue();
+        if (taskQueues.get(bestQueueIndex).offer(task)) {
+            return true;
+        }
+        
+        // Стратегия 2: Round Robin fallback - пробуем все остальные очереди
+        for (int attempt = 0; attempt < taskQueues.size() - 1; attempt++) {
+            int queueIndex = (queueSelector.getAndIncrement() % taskQueues.size());
+            if (queueIndex != bestQueueIndex && taskQueues.get(queueIndex).offer(task)) {
+                return true;
+            }
+        }
+        
+        return false; // Все очереди заполнены
     }
     
-    /**
+    /** 
      * Находит наименее загруженную очередь (Least Loaded алгоритм)
      */
     private int findBestQueue() {
         int bestQueue = 0;
-        int minSize = taskQueues.get(0).size();
+        int minSize = Integer.MAX_VALUE;
         
-        for (int i = 1; i < taskQueues.size(); i++) {
+        // Делаем снимок размеров всех очередей
+        for (int i = 0; i < taskQueues.size(); i++) {
             int size = taskQueues.get(i).size();
             if (size < minSize) {
                 minSize = size;
                 bestQueue = i;
+                if (size == 0) {
+                    break; // Нашли пустую - лучше не будет
+                }
             }
         }
         return bestQueue;
@@ -177,8 +188,8 @@ public class CustomThreadPool implements CustomExecutor {
             worker.thread.start();
             totalThreadCount.incrementAndGet();
             
-            logger.info("[Pool] Created extra worker for queue #" + bestQueueIndex + 
-                       " (total threads: " + totalThreadCount.get() + ")");
+            // logger.info("[Pool] Created extra worker for queue #" + bestQueueIndex + 
+            //            " (total threads: " + totalThreadCount.get() + ")");
             return true;
         } finally {
             mainLock.unlock();
@@ -209,7 +220,7 @@ public class CustomThreadPool implements CustomExecutor {
             if (shutdown) return;
             
             shutdown = true;
-            logger.info("[Pool] Shutdown initiated - stopping acceptance of new tasks");
+            // logger.info("[Pool] Shutdown initiated - stopping acceptance of new tasks");
             
             // Прерываем все рабочие потоки для graceful shutdown
             synchronized (workers) {
@@ -229,7 +240,7 @@ public class CustomThreadPool implements CustomExecutor {
         try {
             if (!shutdown) {
                 shutdown = true;
-                logger.info("[Pool] ShutdownNow initiated - forcing immediate termination");
+                // logger.info("[Pool] ShutdownNow initiated - forcing immediate termination");
                 
                 // Прерываем все рабочие потоки
                 synchronized (workers) {
@@ -243,7 +254,7 @@ public class CustomThreadPool implements CustomExecutor {
                     queue.drainTo(remainingTasks);
                 }
                 
-                logger.info("[Pool] ShutdownNow completed, " + remainingTasks.size() + " tasks cancelled");
+                // logger.info("[Pool] ShutdownNow completed, " + remainingTasks.size() + " tasks cancelled");
             }
         } finally {
             mainLock.unlock();
@@ -292,7 +303,7 @@ public class CustomThreadPool implements CustomExecutor {
         public void run() {
             long waitTime = System.currentTimeMillis() - submitTime;
             if (waitTime > 100) { // Логируем только если задача ждала более 100мс
-                logger.info("[Task] Task-" + taskId + " waited " + waitTime + "ms in queue");
+                // logger.info("[Task] Task-" + taskId + " waited " + waitTime + "ms in queue");
             }
             task.run();
         }
@@ -319,10 +330,10 @@ public class CustomThreadPool implements CustomExecutor {
             
             // Добавляем UncaughtExceptionHandler для лучшего логирования ошибок
             thread.setUncaughtExceptionHandler((t, e) -> {
-                logger.log(Level.SEVERE, "[ThreadFactory] Uncaught exception in thread " + t.getName(), e);
+                // logger.log(Level.SEVERE, "[ThreadFactory] Uncaught exception in thread " + t.getName(), e);
             });
             
-            logger.info("[ThreadFactory] Creating new thread: " + threadName);
+            // logger.info("[ThreadFactory] Creating new thread: " + threadName);
             return thread;
         }
     }
@@ -337,7 +348,7 @@ public class CustomThreadPool implements CustomExecutor {
             String details = String.format("active=%d, total=%d, queue=%d", 
                     getActiveCount(), getPoolSize(), getQueueSize());
             
-            logger.warning("[Rejected] Task rejected (" + reason + "): " + r + " [" + details + "]");
+            // logger.warning("[Rejected] Task rejected (" + reason + "): " + r + " [" + details + "]");
             
             // Выбрана стратегия AbortPolicy - быстрый отказ с исключением
             // Альтернативы:
@@ -383,63 +394,58 @@ public class CustomThreadPool implements CustomExecutor {
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                logger.info("[Worker] " + Thread.currentThread().getName() + " interrupted");
+                // logger.info("[Worker] " + Thread.currentThread().getName() + " interrupted");
             } finally {
                 workerDone();
             }
         }
         
-        private Runnable getTask() throws InterruptedException {
-            // Если shutdown и очередь пуста - завершаемся
-            if (shutdown && workQueue.isEmpty()) {
+    private Runnable getTask() throws InterruptedException {
+        boolean shutdownSnapshot = shutdown;  // Снимок состояния
+        
+        if (isCoreWorker) {
+            if (shutdownSnapshot) {
+                return workQueue.poll(); // Non-blocking при shutdown
+            }
+            return workQueue.poll(5, TimeUnit.SECONDS);
+        } else {
+            // Extra поток
+            Runnable task = workQueue.poll(keepAliveTime, timeUnit);
+            if (task == null && !shutdownSnapshot) {
+                // Завершаемся только если не было shutdown во время ожидания
                 return null;
             }
-            
-            if (isCoreWorker) {
-                // Core потоки: работают до shutdown, используют блокирующий take()
-                if (shutdown) {
-                    return workQueue.poll(); // Non-blocking для быстрого завершения
-                }
-                
-                // Используем poll с периодической проверкой состояния
-                Runnable task = workQueue.poll(5, TimeUnit.SECONDS);
-                return task; // null - нормально для core потоков
-            } else {
-                // Extra потоки: завершаются по keepAliveTime
-                Runnable task = workQueue.poll(keepAliveTime, timeUnit);
-                if (task == null && !shutdown) {
-                    logger.info("[Worker] " + Thread.currentThread().getName() + " idle timeout, stopping");
-                }
-                return task;
-            }
+            return task;
         }
+    }
         
         private void runTask(Runnable task) {
             activeThreadCount.incrementAndGet();
             long startTime = System.currentTimeMillis();
             
             try {
-                logger.info("[Worker] " + Thread.currentThread().getName() + " executes " + task);
+                // logger.info("[Worker] " + Thread.currentThread().getName() + " executes " + task);
                 task.run();
                 
                 long executionTime = System.currentTimeMillis() - startTime;
                 if (executionTime > 1000) { // Логируем медленные задачи
-                    logger.info("[Worker] Task " + task + " took " + executionTime + "ms");
+                    // logger.info("[Worker] Task " + task + " took " + executionTime + "ms");
                 }
             } catch (Exception e) {
-                logger.log(Level.SEVERE, "[Worker] Task execution failed: " + task, e);
+                // logger.log(Level.SEVERE, "[Worker] Task execution failed: " + task, e);
             } finally {
                 activeThreadCount.decrementAndGet();
             }
         }
         
         private boolean shouldTerminate() {
+            boolean shutdownSnapshot = shutdownSignaled;
+            boolean queueEmptySnapshot = workQueue.isEmpty();
+            
             if (isCoreWorker) {
-                // Core потоки завершаются только при shutdown с пустой очередью
-                return shutdownSignaled && workQueue.isEmpty();
+                return shutdownSnapshot && queueEmptySnapshot;
             } else {
-                // Extra потоки завершаются при shutdown или после keepalive timeout
-                return shutdownSignaled && workQueue.isEmpty();
+                return shutdownSnapshot && queueEmptySnapshot;
             }
         }
         
@@ -450,15 +456,15 @@ public class CustomThreadPool implements CustomExecutor {
                 int remaining = totalThreadCount.decrementAndGet();
                 
                 String workerType = isCoreWorker ? "core" : "extra";
-                logger.info("[Worker] " + Thread.currentThread().getName() + 
-                           " (" + workerType + ") terminated. Remaining threads: " + remaining);
+                // logger.info("[Worker] " + Thread.currentThread().getName() + 
+                //            " (" + workerType + ") terminated. Remaining threads: " + remaining);
                 
                 // Проверяем полное завершение пула
                 if (remaining == 0 && shutdown) {
                     synchronized (terminationLock) {
                         terminated = true;
                         terminationLock.notifyAll();
-                        logger.info("[Pool] All workers terminated - pool fully shutdown");
+                        // logger.info("[Pool] All workers terminated - pool fully shutdown");
                     }
                 }
             } finally {
@@ -486,7 +492,7 @@ public class CustomThreadPool implements CustomExecutor {
             while (!terminated) {
                 long remaining = deadline - System.nanoTime();
                 if (remaining <= 0) {
-                    logger.warning("[Pool] Termination timeout exceeded. Active threads: " + getPoolSize());
+                    // logger.warning("[Pool] Termination timeout exceeded. Active threads: " + getPoolSize());
                     return false;
                 }
                 
